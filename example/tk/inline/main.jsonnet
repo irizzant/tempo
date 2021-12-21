@@ -1,4 +1,3 @@
-local tempo = import '../tempo-microservices/main.jsonnet';
 local clusters = import 'clusters.libsonnet';
 local tanka = import 'github.com/grafana/jsonnet-libs/tanka-util/main.libsonnet';
 
@@ -10,7 +9,7 @@ local tanka = import 'github.com/grafana/jsonnet-libs/tanka-util/main.libsonnet'
       apiserver=cluster.apiServer,
     )
     + tanka.environment.withLabels({ cluster: cluster.name })
-    + tanka.environment.withData(tempo {
+    + tanka.environment.withData( cluster.data {
 
       _config+:: {
         namespace: cluster.namespace,

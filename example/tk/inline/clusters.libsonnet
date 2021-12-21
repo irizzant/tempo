@@ -10,6 +10,9 @@
     local envVar = k.core.v1.envVar,
     local sealedSecrets = import 'sealedsecrets.libsonnet',
     local sealedSecret = sealedSecrets.bitnami.sealedSecret,
+    local tempo = import '../tempo-microservices/main.jsonnet',
+    
+    data: tempo,
 
     name: 'k3d-test',
     apiServer: 'https://0.0.0.0:35987',
