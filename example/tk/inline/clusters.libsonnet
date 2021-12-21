@@ -11,7 +11,7 @@
     local sealedSecrets = import 'sealedsecrets.libsonnet',
     local sealedSecret = sealedSecrets.bitnami.sealedSecret,
     local tempo = import '../tempo-microservices/main.jsonnet',
-    
+
     data: tempo,
 
     name: 'k3d-test',
@@ -61,8 +61,7 @@
           containerPort.new('jaeger-grpc', 14250),
           containerPort.new('otel-grpc', 4317),
           containerPort.new('otel-http', 55681),
-        ]) + k.util.resourcesRequests('1m', '500Mi')
-        + container.withArgsMixin(['--config.expand-env=true'])
+        ]) + container.withArgsMixin(['--config.expand-env=true'])
         + container.withEnvMixin([
           envVar.withName('S3_ACCESS_KEY')
           + envVar.valueFrom.secretKeyRef.withKey('S3_ACCESS_KEY')
@@ -101,8 +100,7 @@
         },
       },
 
-      tempo_querier_container+:: k.util.resourcesRequests('1m', '500Mi')
-                                 + container.withArgsMixin(['--config.expand-env=true'])
+      tempo_querier_container+:: container.withArgsMixin(['--config.expand-env=true'])
                                  + container.withEnvMixin([
                                    envVar.withName('S3_ACCESS_KEY')
                                    + envVar.valueFrom.secretKeyRef.withKey('S3_ACCESS_KEY')
@@ -112,8 +110,7 @@
                                    + envVar.valueFrom.secretKeyRef.withName('minio-secret'),
                                  ]),
 
-      tempo_query_frontend_container+:: k.util.resourcesRequests('1m', '500Mi')
-                                        + container.withArgsMixin(['--config.expand-env=true'])
+      tempo_query_frontend_container+:: container.withArgsMixin(['--config.expand-env=true'])
                                         + container.withEnvMixin([
                                           envVar.withName('S3_ACCESS_KEY')
                                           + envVar.valueFrom.secretKeyRef.withKey('S3_ACCESS_KEY')
@@ -123,8 +120,7 @@
                                           + envVar.valueFrom.secretKeyRef.withName('minio-secret'),
                                         ]),
 
-      tempo_ingester_container+:: k.util.resourcesRequests('1m', '500Mi')
-                                  + container.withArgsMixin(['--config.expand-env=true'])
+      tempo_ingester_container+:: container.withArgsMixin(['--config.expand-env=true'])
                                   + container.withEnvMixin([
                                     envVar.withName('S3_ACCESS_KEY')
                                     + envVar.valueFrom.secretKeyRef.withKey('S3_ACCESS_KEY')
