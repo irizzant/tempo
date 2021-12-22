@@ -42,6 +42,7 @@
       '--grpc-storage-plugin.configuration-file=/conf/tempo-query.yaml',
       '--query.bearer-token-propagation=true',
     ]) +
+    (if $._config.variables_expansion then container.withArgsMixin(['--config.expand-env=true']) else {}) +
     container.withVolumeMounts([
       volumeMount.new(tempo_query_config_volume, '/conf'),
     ]),
