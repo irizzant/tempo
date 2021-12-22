@@ -26,6 +26,16 @@
       _config+:: {
 
         search_enabled: true,
+        
+        variables_expansion: true,
+		variables_expansion_env_mixin: [
+          envVar.withName('S3_ACCESS_KEY')
+          + envVar.valueFrom.secretKeyRef.withKey('S3_ACCESS_KEY')
+          + envVar.valueFrom.secretKeyRef.withName('minio-secret'),
+          envVar.withName('S3_SECRET_KEY')
+          + envVar.valueFrom.secretKeyRef.withKey('S3_SECRET_KEY')
+          + envVar.valueFrom.secretKeyRef.withName('minio-secret'),
+        ],
 
         overrides+:: {
           '*': {
@@ -61,14 +71,6 @@
           containerPort.new('jaeger-grpc', 14250),
           containerPort.new('otel-grpc', 4317),
           containerPort.new('otel-http', 55681),
-        ]) + container.withArgsMixin(['--config.expand-env=true'])
-        + container.withEnvMixin([
-          envVar.withName('S3_ACCESS_KEY')
-          + envVar.valueFrom.secretKeyRef.withKey('S3_ACCESS_KEY')
-          + envVar.valueFrom.secretKeyRef.withName('minio-secret'),
-          envVar.withName('S3_SECRET_KEY')
-          + envVar.valueFrom.secretKeyRef.withKey('S3_SECRET_KEY')
-          + envVar.valueFrom.secretKeyRef.withName('minio-secret'),
         ]),
 
       tempo_querier_config+:: {
@@ -100,35 +102,11 @@
         },
       },
 
-      tempo_querier_container+:: container.withArgsMixin(['--config.expand-env=true'])
-                                 + container.withEnvMixin([
-                                   envVar.withName('S3_ACCESS_KEY')
-                                   + envVar.valueFrom.secretKeyRef.withKey('S3_ACCESS_KEY')
-                                   + envVar.valueFrom.secretKeyRef.withName('minio-secret'),
-                                   envVar.withName('S3_SECRET_KEY')
-                                   + envVar.valueFrom.secretKeyRef.withKey('S3_SECRET_KEY')
-                                   + envVar.valueFrom.secretKeyRef.withName('minio-secret'),
-                                 ]),
+      tempo_querier_container+:: {},
 
-      tempo_query_frontend_container+:: container.withArgsMixin(['--config.expand-env=true'])
-                                        + container.withEnvMixin([
-                                          envVar.withName('S3_ACCESS_KEY')
-                                          + envVar.valueFrom.secretKeyRef.withKey('S3_ACCESS_KEY')
-                                          + envVar.valueFrom.secretKeyRef.withName('minio-secret'),
-                                          envVar.withName('S3_SECRET_KEY')
-                                          + envVar.valueFrom.secretKeyRef.withKey('S3_SECRET_KEY')
-                                          + envVar.valueFrom.secretKeyRef.withName('minio-secret'),
-                                        ]),
+      tempo_query_frontend_container+:: {},
 
-      tempo_ingester_container+:: container.withArgsMixin(['--config.expand-env=true'])
-                                  + container.withEnvMixin([
-                                    envVar.withName('S3_ACCESS_KEY')
-                                    + envVar.valueFrom.secretKeyRef.withKey('S3_ACCESS_KEY')
-                                    + envVar.valueFrom.secretKeyRef.withName('minio-secret'),
-                                    envVar.withName('S3_SECRET_KEY')
-                                    + envVar.valueFrom.secretKeyRef.withKey('S3_SECRET_KEY')
-                                    + envVar.valueFrom.secretKeyRef.withName('minio-secret'),
-                                  ]),
+      tempo_ingester_container+:: {},
 
       local ingressRulesArray = std.map(
         function(v) v {
@@ -156,15 +134,7 @@
         },
       },
 
-      tempo_compactor_container+:: container.withArgsMixin(['--config.expand-env=true'])
-                                   + container.withEnvMixin([
-                                     envVar.withName('S3_ACCESS_KEY')
-                                     + envVar.valueFrom.secretKeyRef.withKey('S3_ACCESS_KEY')
-                                     + envVar.valueFrom.secretKeyRef.withName('minio-secret'),
-                                     envVar.withName('S3_SECRET_KEY')
-                                     + envVar.valueFrom.secretKeyRef.withKey('S3_SECRET_KEY')
-                                     + envVar.valueFrom.secretKeyRef.withName('minio-secret'),
-                                   ]),
+      tempo_compactor_container+:: {},
 
       minio_secret: sealedSecret.new('minio-secret') +
                     sealedSecret.spec.encryptedData.withEncryptedData({
