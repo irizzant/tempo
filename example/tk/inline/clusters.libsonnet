@@ -1,16 +1,21 @@
+local k = import 'ksonnet-util/kausal.libsonnet';
+local minio = import 'minio/minio.libsonnet';
+local container = k.core.v1.container;
+local secret = k.core.v1.secret;
+local containerPort = k.core.v1.containerPort;
+local rule = k.networking.v1.ingressRule;
+local path = k.networking.v1.httpIngressPath;
+local envVar = k.core.v1.envVar;
+local sealedSecrets = import 'sealedsecrets.libsonnet';
+local sealedSecret = sealedSecrets.bitnami.sealedSecret;
+local tempo = import '../tempo-microservices/main.jsonnet';
+local tempoSingle = import '../tempo-single-binary/main.jsonnet';
+local dashboards = import 'dashboards/grafana.libsonnet';
+local metrics = import 'metrics/prometheus.libsonnet';
+local load = import 'synthetic-load-generator/main.libsonnet';
+local configMap = k.core.v1.configMap;
 [
   {
-    local minio = import 'minio/minio.libsonnet',
-    local k = import 'ksonnet-util/kausal.libsonnet',
-    local container = k.core.v1.container,
-    local secret = k.core.v1.secret,
-    local containerPort = k.core.v1.containerPort,
-    local rule = k.networking.v1.ingressRule,
-    local path = k.networking.v1.httpIngressPath,
-    local envVar = k.core.v1.envVar,
-    local sealedSecrets = import 'sealedsecrets.libsonnet',
-    local sealedSecret = sealedSecrets.bitnami.sealedSecret,
-    local tempo = import '../tempo-microservices/main.jsonnet',
 
     data: tempo,
 
@@ -26,9 +31,9 @@
       _config+:: {
 
         search_enabled: true,
-        
+
         variables_expansion: true,
-		variables_expansion_env_mixin: [
+        variables_expansion_env_mixin: [
           envVar.withName('S3_ACCESS_KEY')
           + envVar.valueFrom.secretKeyRef.withKey('S3_ACCESS_KEY')
           + envVar.valueFrom.secretKeyRef.withName('minio-secret'),
@@ -147,5 +152,117 @@
       for field in std.objectFieldsAll(minio)
     },  // end dataOverride
 
+  },
+  {
+    data: tempoSingle,
+
+    name: 'k3d-test-single',
+    apiServer: 'https://0.0.0.0:35987',
+    namespace: 'tempo-single-tk',
+
+    dataOverride: {
+      _images+:: {
+        // images can be overridden here if desired
+      },
+
+      _config+:: {
+
+        search_enabled: true,
+
+        receivers: {
+          jaeger: {
+            protocols: {
+              thrift_http: null,
+              grpc: null,
+            },
+          },
+          otlp: {
+            protocols: {
+              grpc: {
+                max_recv_msg_size_mib: 134,
+              },
+              http: null,
+            },
+          },
+        },
+
+      },  // end _config
+
+      tempo_container+:: k.util.resourcesRequests('1m', '3Gi') +
+                         container.withEnvMixin([
+                           envVar.withName('S3_ACCESS_KEY')
+                           + envVar.valueFrom.secretKeyRef.withKey('S3_ACCESS_KEY')
+                           + envVar.valueFrom.secretKeyRef.withName('minio-secret'),
+                           envVar.withName('S3_SECRET_KEY')
+                           + envVar.valueFrom.secretKeyRef.withKey('S3_SECRET_KEY')
+                           + envVar.valueFrom.secretKeyRef.withName('minio-secret'),
+                         ]) +
+                         container.withArgsMixin('--config.expand-env=true') +
+                         container.withPortsMixin([
+                           containerPort.new('jaeger-grpc', 14250),
+                           containerPort.new('otel-grpc', 4317),
+                           containerPort.new('otel-http', 55681),
+                         ]),
+
+      local ingressRulesArray = std.map(
+        function(v) v {
+          host: 'grafana-tempo-single.127.0.0.1.nip.io',
+        },
+        super.ingress.spec.rules
+      ),
+
+      ingress+: {
+        spec+: {
+          rules: ingressRulesArray,
+        },
+      },
+
+      tempo_config+:: {
+        server+: {
+          grpc_server_max_recv_msg_size: 1.34217728e+08,
+          grpc_server_max_send_msg_size: 1.34217728e+08,
+        },
+        storage+: {
+          trace+: {
+            backend: 's3',
+            s3+: {
+              endpoint: 'minio.minio.svc.cluster.local:9000',
+              access_key: '${S3_ACCESS_KEY}',
+              secret_key: '${S3_SECRET_KEY}',
+              insecure: true,
+              bucket: 'tempo-single-tk',
+            },
+          },
+        },
+        overrides: {
+          per_tenant_override_config: '/conf/overrides.yaml',
+        },
+      },
+
+      tempo_configmap+: configMap.withDataMixin({
+        'overrides.yaml': |||
+          overrides:
+            '*':
+              max_traces_per_user: 100000
+              ingestion_rate_limit_bytes: 200e5
+              ingestion_burst_size_bytes: 200e5
+              max_bytes_per_trace: 300e5
+              max_search_bytes_per_trace: 0
+        |||,
+      }),
+
+      minio_secret: sealedSecret.new('minio-secret') +
+                    sealedSecret.spec.encryptedData.withEncryptedData({
+                      S3_ACCESS_KEY: 'AgB1czywE1z2NoAH81klZfKPrrlfgu9L8Qze1bC676+WGKuOR4U+u7FMnyzwhHC9DTUgPbpNRr+TDAoIwBvtDnZ5Brn8PZGAeC8YLJuM+uWuP2REGEEioA1XZWAHGlQNVwWXRR8AT4Bc7ZwtbrcQE2rDsomyIYZyLHExbLWKXIc+Liy0HqevDUAYIJxDsmHvFSgOLI9eCWcGNfWtxrSJ34grKn0GrN6vCQF3jqSEesxTTv40u4u7HFJ4PB4OXZQ5TVHX9O2V0gw5+Y+Tcbpksa8AkL5dCe9S2nVzhar3qFJ9zTX6zWcokFvMAwrxz17+AKRVkwuOE23s06+QT+9U2xsOfLcb5rnoN9thxkncKGS6GoRSLGZ9GQHSGqhIn43td7webE+T6iuITig9i3A9i5Kghrf3D5EO5MyR2UoW0ByEVvBbBepAO0VkIf/zHsLa220FREwR+cSYrdVMHgso7I0XPTFegzajgCHwly4RyCZroawPfffXg1kEAXj/H3yCDk5njQ4z7SFoPx7Y3JHO7VOoFxxtfTBJq70lpRstHB/c4xOBM6SiUKWXpeZdn8LLM+UY/H5mdMo10i83g5Lo2OBeD1mRQi8LkmN+DwqC4t7D9fOvb3afqDa3Ab6ReCjg28295Pxg2v4EZ9NpLReJ5ND2APoNkxodFxvxJ3S1K81roW5KDuRXNN4YmzC5Wjunm61kgMu1rQ3B6HHf',
+                      S3_SECRET_KEY: 'AgDJTTIXr6x8OUd9VVE+Vtgfmm/RtNidK2lFLBh7c8mWbZ3Aw6efkNNRMUGSt/IAh8VHnjpGT9uVpo5xaZYNOxfqsmaLNg/Wj05FgFaRXqKQfI2Rjwx92PjY0rvI1tsKXkp8ddqinz8YHDuceueCSAq5fI00laT8OCdAltSvjbYdrk625xpojMD8Ej5HzUUpyM5pQ4kLiqLZ/QUWkHTfh+425k3i2C236pYn56F0ci+wVYrGzS89Pv112+B6rNTuUyytFZoizUs1rIheRvZxqENCbg4S0wklv5k4VBO+roVM0rLbhPW6GEOQwDohneHbXk+tX753NfeFpVvjEPJW6BXOdHNtFJIAp8J6fs0WVPWdfpcpatWqxuicRS75fX+rMmTlw/4Hbja7wpcddp635bFEkxO84u9gWF9E6RZoTHv9HVqcVLsmobUshunOhp8SfaMAA/wAnL0Ygs01/37pMCShlTpqABYQ+5Gyt36eWLa8A/xnax+ZXIbh/E6KOQTxxB2m8Mko78azLcJlVVtbPeADbcRO6x6PKPcb2Fzvnbq5gSfzuencHXHGL8OWFxFX16CK/jfvSjQmvviUhjX7iZ2iHh21vvWQRTWoN10MQil461y2dJjYZlABIPzhuwIe/ntzv3cU262NhWTCj5IXcXyfO+8QWSWUH3W7cNt3VWQM8iCuTvbIobKcf3u21FOh57znnvr9HxWD4f08pThIS5K9',
+                    }),
+
+    } + {  // disabilitazione prometheus + grafana + synthetic load generator
+      [field]: {}
+      for field in std.objectFieldsAll(dashboards) + std.objectFieldsAll(metrics)
+      if field != '_config' && field != '_images'
+    } + {
+      dashboards: {},
+    },  // end dataOverride
   },
 ]
