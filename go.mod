@@ -41,7 +41,7 @@ require (
 	github.com/jedib0t/go-pretty/v6 v6.2.4
 	github.com/json-iterator/go v1.1.12
 	github.com/jsternberg/zap-logfmt v1.2.0
-	github.com/klauspost/compress v1.15.7
+	github.com/klauspost/compress v1.15.13
 	github.com/minio/minio-go/v7 v7.0.16-0.20211116163909-d00629356463
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/olekukonko/tablewriter v0.0.5
