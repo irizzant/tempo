@@ -100,12 +100,13 @@ func (w *GzipResponseWriter) Write(b []byte) (int, error) {
 	}
 	w.buf = append(w.buf, b[:toAdd]...)
 	remain := b[toAdd:]
+	hdr := w.Header()
 
 	// Only continue if they didn't already choose an encoding or a known unhandled content length or type.
-	if len(w.Header()[HeaderNoCompression]) == 0 && w.Header().Get(contentEncoding) == "" && w.Header().Get(contentRange) == "" {
+	if len(hdr[HeaderNoCompression]) == 0 && hdr.Get(contentEncoding) == "" && hdr.Get(contentRange) == "" {
 		// Check more expensive parts now.
-		cl, _ := atoi(w.Header().Get(contentLength))
-		ct := w.Header().Get(contentType)
+		cl, _ := atoi(hdr.Get(contentLength))
+		ct := hdr.Get(contentType)
 		if cl == 0 || cl >= w.minSize && (ct == "" || w.contentTypeFilter(ct)) {
 			// If the current buffer is less than minSize and a Content-Length isn't set, then wait until we have more data.
 			if len(w.buf) < w.minSize && cl == 0 {
@@ -121,8 +122,8 @@ func (w *GzipResponseWriter) Write(b []byte) (int, error) {
 
 				// Handles the intended case of setting a nil Content-Type (as for http/server or http/fs)
 				// Set the header only if the key does not exist
-				if _, ok := w.Header()[contentType]; w.setContentType && !ok {
-					w.Header().Set(contentType, ct)
+				if _, ok := hdr[contentType]; w.setContentType && !ok {
+					hdr.Set(contentType, ct)
 				}
 
 				// If the Content-Type is acceptable to GZIP, initialize the GZIP writer.
@@ -196,12 +197,13 @@ func (w *GzipResponseWriter) startGzip() error {
 
 // startPlain writes to sent bytes and buffer the underlying ResponseWriter without gzip.
 func (w *GzipResponseWriter) startPlain() error {
+	w.Header().Del(HeaderNoCompression)
 	if w.code != 0 {
 		w.ResponseWriter.WriteHeader(w.code)
 		// Ensure that no other WriteHeader's happen
 		w.code = 0
 	}
-	delete(w.Header(), HeaderNoCompression)
+
 	w.ignore = true
 	// If Write was never called then don't call Write on the underlying ResponseWriter.
 	if len(w.buf) == 0 {
@@ -387,7 +389,8 @@ func NewWrapper(opts ...option) (func(http.Handler) http.HandlerFunc, error) {
 					h.ServeHTTP(gw, r)
 				}
 			} else {
-				h.ServeHTTP(w, r)
+				h.ServeHTTP(newNoGzipResponseWriter(w), r)
+				w.Header().Del(HeaderNoCompression)
 			}
 		}
 	}, nil
@@ -741,4 +744,68 @@ func atoi(s string) (int, bool) {
 	// Slow path for invalid, big, or underscored integers.
 	i64, err := strconv.ParseInt(s, 10, 0)
 	return int(i64), err == nil
+}
+
+// newNoGzipResponseWriter will return a response writer that
+// cleans up compression artifacts.
+// Depending on whether http.Hijacker is supported the returned will as well.
+func newNoGzipResponseWriter(w http.ResponseWriter) http.ResponseWriter {
+	n := &NoGzipResponseWriter{ResponseWriter: w}
+	if hj, ok := w.(http.Hijacker); ok {
+		x := struct {
+			http.ResponseWriter
+			http.Hijacker
+			http.Flusher
+		}{
+			ResponseWriter: n,
+			Hijacker:       hj,
+			Flusher:        n,
+		}
+		return x
+	}
+
+	return n
+}
+
+// NoGzipResponseWriter filters out HeaderNoCompression.
+type NoGzipResponseWriter struct {
+	http.ResponseWriter
+	hdrCleaned bool
+}
+
+func (n *NoGzipResponseWriter) CloseNotify() <-chan bool {
+	if cn, ok := n.ResponseWriter.(http.CloseNotifier); ok {
+		return cn.CloseNotify()
+	}
+	return nil
+}
+
+func (n *NoGzipResponseWriter) Flush() {
+	if !n.hdrCleaned {
+		n.ResponseWriter.Header().Del(HeaderNoCompression)
+		n.hdrCleaned = true
+	}
+	if f, ok := n.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+func (n *NoGzipResponseWriter) Header() http.Header {
+	return n.ResponseWriter.Header()
+}
+
+func (n *NoGzipResponseWriter) Write(bytes []byte) (int, error) {
+	if !n.hdrCleaned {
+		n.ResponseWriter.Header().Del(HeaderNoCompression)
+		n.hdrCleaned = true
+	}
+	return n.ResponseWriter.Write(bytes)
+}
+
+func (n *NoGzipResponseWriter) WriteHeader(statusCode int) {
+	if !n.hdrCleaned {
+		n.ResponseWriter.Header().Del(HeaderNoCompression)
+		n.hdrCleaned = true
+	}
+	n.ResponseWriter.WriteHeader(statusCode)
 }
